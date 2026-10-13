@@ -1,0 +1,98 @@
+```mermaid
+flowchart TD
+    %% External client
+    Client[("Client / Test Harness\nHTTP :80")]
+
+    %% Public IP
+    PublicIP[("Public IP\n<LOAD_BALANCER_PUBLIC_IP>\nStandard, Static")]
+
+    %% Load Balancer
+    subgraph LB["Azure Standard Load Balancer\nlb-t087-chaos-resilience"]
+        direction TB
+        FE[("Frontend\nTCP :80")]
+        Probe[["Health Probe\nlb-t087-chaos-resilience-probe01\nHTTP :80 /"]]
+        BE[("Backend Pool: bepool\nTCP :80")]
+    end
+
+    %% VMSS across zones
+    subgraph Zone1["Availability Zone 1"]
+        VM0[["VMSS Instance 0\nStandard_B2ats_v2\nUbuntu 22.04\nNGINX :80"]]
+    end
+
+    subgraph Zone2["Availability Zone 2"]
+        VM1[["VMSS Instance 1\nStandard_B2ats_v2\nUbuntu 22.04\nNGINX :80"]]
+    end
+
+    subgraph Zone3["Availability Zone 3"]
+        VM2[["VMSS Instance 2\nStandard_B2ats_v2\nUbuntu 22.04\nNGINX :80"]]
+    end
+
+    %% Networking
+    subgraph Net["Virtual Network: vnet-eastasia (172.16.0.0/16)"]
+        Subnet[("Subnet: snet-eastasia-1")]
+        NSG[["NSG: basicNsgvnet-eastasia-nic01\nAllow TCP :80 (priority 300)"]]
+    end
+
+    %% Connections
+    Client -->|HTTP :80| PublicIP
+    PublicIP --> FE
+    FE --> BE
+    BE --> Probe
+    Probe -.->|Health Check\nHTTP GET /| VM0
+    Probe -.->|Health Check\nHTTP GET /| VM1
+    Probe -.->|Health Check\nHTTP GET /| VM2
+    BE --> VM0
+    BE --> VM1
+    BE --> VM2
+    VM0 --> Subnet
+    VM1 --> Subnet
+    VM2 --> Subnet
+    Subnet --> NSG
+
+    %% Styling
+    classDef zone fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef lb fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
+    classDef net fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    classDef client fill:#fce4ec,stroke:#c2185b,stroke-width:2px;
+
+    class Zone1,Zone2,Zone3 zone;
+    class LB lb;
+    class Net net;
+    class Client client;
+```
+
+---
+
+## Architecture Description
+
+### Traffic Flow
+
+1. **Client** sends HTTP request to **Public IP** (`<LOAD_BALANCER_PUBLIC_IP>`)
+2. **Standard Load Balancer** (`lb-t087-chaos-resilience`) receives on frontend TCP port 80
+3. **Health Probe** (`lb-t087-chaos-resilience-probe01`) continuously checks `HTTP :80 /` on each backend instance
+4. **Backend Pool** (`bepool`) distributes traffic to healthy instances across **Zones 1, 2, 3**
+5. **VMSS Instances** (3 × `Standard_B2ats_v2`) run **NGINX on port 80** (Ubuntu 22.04)
+6. **NSG** (`basicNsgvnet-eastasia-nic01`) allows inbound TCP 80 from any source
+
+### High Availability Design
+
+- **Zone Redundancy**: VMSS deployed across 3 availability zones (1, 2, 3)
+- **Load Balancer SKU**: Standard (zone-redundant frontend)
+- **Health Probe**: HTTP `/` on port 80, 5s interval, 2 failure threshold → ~10s detection
+- **Orchestration**: Uniform, Manual upgrade policy (controlled updates)
+
+### Verified Configuration
+
+| Component | Verified Value |
+|-----------|----------------|
+| Region | East Asia |
+| VMSS Capacity | 3 instances |
+| VM Size | Standard_B2ats_v2 |
+| Zones | 1, 2, 3 |
+| LB SKU | Standard |
+| Public IP | `<LOAD_BALANCER_PUBLIC_IP>` (Static) |
+| Health Probe | HTTP :80 / |
+| VNet CIDR | 172.16.0.0/16 |
+| NSG Rule | Allow TCP 80, Priority 300 |
+
+> **Source:** Azure CLI inventory run 2026-10-13. All resources currently running.
