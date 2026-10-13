@@ -124,8 +124,8 @@ if ! [[ "$CONCURRENCY" =~ ^[0-9]+$ ]] || [[ "$CONCURRENCY" -lt 1 ]]; then
 fi
 
 # Resolve public IP: env var > CLI arg > Azure CLI lookup
-if [[ -n "${PUBLIC_IP_ENV:-}" ]]; then
-    PUBLIC_IP="$PUBLIC_IP_ENV"
+if [[ -n "${PUBLIC_IP:-}" ]]; then
+    PUBLIC_IP="$PUBLIC_IP"
     echo -e "${GREEN}PUBLIC_IP from environment variable${NC}"
 elif [[ -n "${PUBLIC_IP_FROM_ARG:-}" ]]; then
     PUBLIC_IP="$PUBLIC_IP_FROM_ARG"
